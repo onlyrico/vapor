@@ -13,7 +13,7 @@ public struct PlaintextDecoder: ContentDecoder {
     }
     
     /// `ContentDecoder` conformance.
-    public func decode<D>(_ decodable: D.Type, from body: ByteBuffer, headers: HTTPHeaders, userInfo: [CodingUserInfoKey: Any]) throws -> D
+    public func decode<D>(_ decodable: D.Type, from body: ByteBuffer, headers: HTTPHeaders, userInfo: [CodingUserInfoKey: Sendable]) throws -> D
         where D : Decodable
     {
         let string = body.getString(at: body.readerIndex, length: body.readableBytes)
@@ -29,7 +29,7 @@ private final class _PlaintextDecoder: Decoder, SingleValueDecodingContainer {
     let userInfo: [CodingUserInfoKey: Any]
     let plaintext: String?
 
-    init(plaintext: String?, userInfo: [CodingUserInfoKey: Any] = [:]) {
+    init(plaintext: String?, userInfo: [CodingUserInfoKey: Sendable] = [:]) {
         self.plaintext = plaintext
         self.userInfo = userInfo
     }
@@ -72,13 +72,7 @@ private final class _PlaintextDecoder: Decoder, SingleValueDecodingContainer {
 
     func decode<T>(_: T.Type) throws -> T where T : Decodable {
         if let convertible = T.self as? LosslessStringConvertible.Type {
-#if swift(<5.7)
-            guard let value = self.plaintext else { throw DecodingError.valueNotFound(T.self, .init(codingPath: self.codingPath, debugDescription: "Missing value of type \(T.self)")) }
-            guard let result = convertible.init(value) else { throw DecodingError.dataCorruptedError(in: self, debugDescription: "Could not decode \(T.self) from \"\(value)\"") }
-            return result as! T
-#else
             return try self.losslessDecode(convertible) as! T
-#endif
         }
         throw DecodingError.typeMismatch(T.self, .init(codingPath: self.codingPath, debugDescription: "Plaintext decoding does not support complex types."))
     }

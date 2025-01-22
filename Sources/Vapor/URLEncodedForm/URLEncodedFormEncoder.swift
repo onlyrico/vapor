@@ -15,11 +15,11 @@ import NIOCore
 /// See [Mozilla's](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST) docs for more information about
 /// url-encoded forms.
 /// NOTE: This implementation of the encoder does not support encoding booleans to "flags".
-public struct URLEncodedFormEncoder: ContentEncoder, URLQueryEncoder {
+public struct URLEncodedFormEncoder: ContentEncoder, URLQueryEncoder, Sendable {
     /// Used to capture URLForm Coding Configuration used for encoding.
-    public struct Configuration {
+    public struct Configuration: Sendable {
         /// Supported array encodings.
-        public enum ArrayEncoding {
+        public enum ArrayEncoding: Sendable {
             /// Arrays are serialized as separate values with bracket suffixed keys.
             /// For example, `foo = [1,2,3]` would be serialized as `foo[]=1&foo[]=2&foo[]=3`.
             case bracket
@@ -32,18 +32,18 @@ public struct URLEncodedFormEncoder: ContentEncoder, URLQueryEncoder {
         }
 
         /// Supported date formats
-        public enum DateEncodingStrategy {
+        public enum DateEncodingStrategy: Sendable {
             /// Seconds since 1 January 1970 00:00:00 UTC (Unix Timestamp)
             case secondsSince1970
             /// ISO 8601 formatted date
             case iso8601
             /// Using custom callback
-            case custom((Date, Encoder) throws -> Void)
+            case custom(@Sendable (Date, Encoder) throws -> Void)
         }
         /// Specified array encoding.
         public var arrayEncoding: ArrayEncoding
         public var dateEncodingStrategy: DateEncodingStrategy
-        public var userInfo: [CodingUserInfoKey: Any]
+        public var userInfo: [CodingUserInfoKey: Sendable]
 
         /// Creates a new `Configuration`.
         ///
@@ -53,7 +53,7 @@ public struct URLEncodedFormEncoder: ContentEncoder, URLQueryEncoder {
         public init(
             arrayEncoding: ArrayEncoding = .bracket,
             dateEncodingStrategy: DateEncodingStrategy = .secondsSince1970,
-            userInfo: [CodingUserInfoKey: Any] = [:]
+            userInfo: [CodingUserInfoKey: Sendable] = [:]
         ) {
             self.arrayEncoding = arrayEncoding
             self.dateEncodingStrategy = dateEncodingStrategy
@@ -81,7 +81,7 @@ public struct URLEncodedFormEncoder: ContentEncoder, URLQueryEncoder {
     }
 
     /// ``ContentEncoder`` conformance.
-    public func encode<E>(_ encodable: E, to body: inout ByteBuffer, headers: inout HTTPHeaders, userInfo: [CodingUserInfoKey: Any]) throws
+    public func encode<E>(_ encodable: E, to body: inout ByteBuffer, headers: inout HTTPHeaders, userInfo: [CodingUserInfoKey: Sendable]) throws
         where E: Encodable
     {
         headers.contentType = .urlEncodedForm
@@ -96,7 +96,7 @@ public struct URLEncodedFormEncoder: ContentEncoder, URLQueryEncoder {
     }
     
     /// ``URLQueryEncoder`` conformance.
-    public func encode<E>(_ encodable: E, to url: inout URI, userInfo: [CodingUserInfoKey: Any]) throws
+    public func encode<E>(_ encodable: E, to url: inout URI, userInfo: [CodingUserInfoKey: Sendable]) throws
         where E: Encodable
     {
         url.query = try self.encode(encodable, userInfo: userInfo)
@@ -113,7 +113,7 @@ public struct URLEncodedFormEncoder: ContentEncoder, URLQueryEncoder {
     ///   - userInfo: Overrides the default coder user info.
     /// - Returns: Encoded ``String``
     /// - Throws: Any error that may occur while attempting to encode the specified type.
-    public func encode<E>(_ encodable: E, userInfo: [CodingUserInfoKey: Any] = [:]) throws -> String
+    public func encode<E>(_ encodable: E, userInfo: [CodingUserInfoKey: Sendable] = [:]) throws -> String
         where E: Encodable
     {
         var configuration = self.configuration  // Changing a coder's userInfo is a thread-unsafe mutation, operate on a copy
@@ -407,7 +407,7 @@ private extension URLEncodedFormEncoder.Configuration {
             return URLEncodedFormData(values: [date.urlQueryFragmentValue])
         case .iso8601:
             return URLEncodedFormData(values: [
-                ISO8601DateFormatter.threadSpecific.string(from: date).urlQueryFragmentValue
+                ISO8601DateFormatter().string(from: date).urlQueryFragmentValue
             ])
         case .custom(let callback):
             let newCodingPath = codingPath + (key.map { [$0] } ?? [])

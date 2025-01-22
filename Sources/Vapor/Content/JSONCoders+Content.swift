@@ -2,6 +2,11 @@ import Foundation
 import NIOCore
 import NIOHTTP1
 
+#if swift(<6.0)
+extension Foundation.JSONEncoder: @unchecked Swift.Sendable {}
+extension Foundation.JSONDecoder: @unchecked Swift.Sendable {}
+#endif
+
 extension JSONEncoder: ContentEncoder {
     public func encode<E>(_ encodable: E, to body: inout ByteBuffer, headers: inout HTTPHeaders) throws
         where E: Encodable
@@ -9,7 +14,7 @@ extension JSONEncoder: ContentEncoder {
         try self.encode(encodable, to: &body, headers: &headers, userInfo: [:])
     }
     
-    public func encode<E>(_ encodable: E, to body: inout ByteBuffer, headers: inout HTTPHeaders, userInfo: [CodingUserInfoKey: Any]) throws
+    public func encode<E>(_ encodable: E, to body: inout ByteBuffer, headers: inout HTTPHeaders, userInfo: [CodingUserInfoKey: Sendable]) throws
         where E: Encodable
     {
         headers.contentType = .json
@@ -36,7 +41,7 @@ extension JSONDecoder: ContentDecoder {
         try self.decode(D.self, from: body, headers: headers, userInfo: [:])
     }
     
-    public func decode<D>(_ decodable: D.Type, from body: ByteBuffer, headers: HTTPHeaders, userInfo: [CodingUserInfoKey: Any]) throws -> D
+    public func decode<D>(_ decodable: D.Type, from body: ByteBuffer, headers: HTTPHeaders, userInfo: [CodingUserInfoKey: Sendable]) throws -> D
         where D: Decodable
     {
         let data = body.getData(at: body.readerIndex, length: body.readableBytes) ?? Data()

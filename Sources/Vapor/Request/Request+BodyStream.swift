@@ -2,7 +2,7 @@ import NIOCore
 import NIOConcurrencyHelpers
 
 extension Request {
-    final class BodyStream: BodyStreamWriter {
+    final class BodyStream: BodyStreamWriter, AsyncBodyStreamWriter {
         let eventLoop: EventLoop
 
         var isBeingRead: Bool {
@@ -16,13 +16,13 @@ extension Request {
             var buffer: [(BodyStreamResult, EventLoopPromise<Void>?)]
         }
 
-        private let isClosed: NIOLoopBoundBox<Bool>
+        private let isClosed: NIOLockedValueBox<Bool>
         private let handlerBuffer: NIOLoopBoundBox<HandlerBufferContainer>
         private let allocator: ByteBufferAllocator
 
         init(on eventLoop: EventLoop, byteBufferAllocator: ByteBufferAllocator) {
             self.eventLoop = eventLoop
-            self.isClosed = .init(false, eventLoop: eventLoop)
+            self.isClosed = .init(false)
             self.handlerBuffer = .init(.init(handler: nil, buffer: []), eventLoop: eventLoop)
             self.allocator = byteBufferAllocator
         }
@@ -45,6 +45,15 @@ extension Request {
             }
             self.handlerBuffer.value.buffer = []
         }
+        
+        func write(_ result: BodyStreamResult) async throws {
+            // Explicitly adds the ELF because Swift 5.6 fails to infer the return type
+            try await self.eventLoop.flatSubmit { () -> EventLoopFuture<Void> in
+                let promise = self.eventLoop.makePromise(of: Void.self)
+                self.write0(result, promise: promise)
+                return promise.futureResult
+            }.get()
+        }
 
         func write(_ chunk: BodyStreamResult, promise: EventLoopPromise<Void>?) {
             // See https://github.com/vapor/vapor/issues/2906
@@ -60,7 +69,7 @@ extension Request {
         private func write0(_ chunk: BodyStreamResult, promise: EventLoopPromise<Void>?) {
             switch chunk {
             case .end, .error:
-                self.isClosed.value = true
+                self.isClosed.withLockedValue { $0 = true }
             case .buffer: break
             }
             
@@ -101,7 +110,7 @@ extension Request {
         }
 
         deinit {
-            assert(self.isClosed.value, "Request.BodyStream deinitialized before closing.")
+            assert(self.isClosed.withLockedValue { $0 }, "Request.BodyStream deinitialized before closing.")
         }
     }
 }
